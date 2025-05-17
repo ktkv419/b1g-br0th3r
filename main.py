@@ -1,7 +1,8 @@
-import os, re, difflib, shutil, sys, subprocess
+import os, re, shutil, sys, subprocess
 from pathlib import Path
 from itertools import combinations
 from pprint import pprint
+from difflib import SequenceMatcher
 
 
 if not shutil.which("prettier"):
@@ -52,29 +53,36 @@ def read_file(path):
         return ""
 
 
-def group_similar_files(file_list, threshold=0.8):
+def group_similar_files(file_list, threshold=0.5):
+    """
+    Compare each pair of files in file_list and return a list of
+    (ratio, [file1, file2]) for those whose similarity >= threshold.
+
+    `ratio` is a float in [0,1], so threshold=0.5 means 50%.
+    """
     groups = []
 
-    for file1, file2 in combinations(file_list, 2):
-        text1 = read_file(file1)
-        text2 = read_file(file2)
+    for f1, f2 in combinations(file_list, 2):
+        # Read both files
+        with open(f1, encoding="utf-8", errors="ignore") as a, open(
+            f2, encoding="utf-8", errors="ignore"
+        ) as b:
+            txt1, txt2 = a.read(), b.read()
 
-        ratio = difflib.SequenceMatcher(None, text1, text2).ratio()
+        # Compute similarity ratio
+        ratio = SequenceMatcher(None, txt1, txt2).ratio()
 
+        # Keep only those above threshold
         if ratio >= threshold:
-            for group in groups:
-                if file1 in group or file2 in group:
-                    group.update([file1, file2])
-                    break
-            else:
-                groups.append(set([file1, file2]))
+            groups.append((ratio, [f1, f2]))
 
+    # Sort descending by ratio
+    groups.sort(key=lambda x: x[0], reverse=True)
     return groups
 
 
-similar_groups = group_similar_files(files_by_ext["css"])
+similar_groups = group_similar_files(files_by_ext["css"], threshold=0.5)
 
-for i, group in enumerate(similar_groups, 1):
-    print(f"Group {i}: {group}")
-
-pprint(data)
+for ratio, pair in similar_groups:
+    # ratio*100 → percentage, and .0f to round to nearest integer
+    print(f"{ratio * 100:.0f}% {pair}")

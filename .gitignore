@@ -1,1 +1,3 @@
-test-data
+clones
+__pycache__
+.env.template

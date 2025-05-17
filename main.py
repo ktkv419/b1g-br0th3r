@@ -4,12 +4,22 @@ from itertools import combinations
 from pprint import pprint
 from difflib import SequenceMatcher
 
+from dotenv import load_dotenv
+
+from clone import clone_repo, get_all_repos, has_branch
+
+load_dotenv()
+
+ORG = os.getenv("ORG")
+SUBSTR = os.getenv("SUBSTR")
+BRANCH = os.getenv("BRANCH")
+DEST_DIR = os.getenv("DEST_DIR")
+TOKEN = os.getenv("GITHUB_TOKEN")
 
 if not shutil.which("prettier"):
     print("Prettier is NOT installed")
     sys.exit(1)
 
-basepath = "./test-data"
 ignored_folders = ["node_modules", ".*"]
 file_exts = ["css", "js", "html"]
 files_by_ext = {ext: [] for ext in ["html", "js", "css"]}
@@ -17,7 +27,7 @@ files_by_ext = {ext: [] for ext in ["html", "js", "css"]}
 data = []
 
 # Scanning repos
-with os.scandir(basepath) as entries:
+with os.scandir(DEST_DIR) as entries:
     for entry in entries:
         with os.scandir(entry.path) as files:
             data.append({"folder": entry, "surname": entry.name.split("-")[-1]})
@@ -79,6 +89,19 @@ def group_similar_files(file_list, threshold=0.5):
     # Sort descending by ratio
     groups.sort(key=lambda x: x[0], reverse=True)
     return groups
+
+
+# 1) Fetch & filter repo names
+all_repos = get_all_repos(ORG, TOKEN)
+targets = [r["name"] for r in all_repos if SUBSTR.lower() in r["name"].lower()]
+
+# 2) Clone each wip branch
+os.makedirs(DEST_DIR, exist_ok=True)
+for name in targets:
+    if has_branch(ORG, name, BRANCH, TOKEN):
+        clone_repo(ORG, name, BRANCH, DEST_DIR)
+    else:
+        print(f"skip {name}: no {BRANCH}")
 
 
 similar_groups = group_similar_files(files_by_ext["css"], threshold=0.5)

@@ -1,11 +1,8 @@
 import os, re, shutil, sys, subprocess
 from pathlib import Path
 from itertools import combinations
-from pprint import pprint
 from difflib import SequenceMatcher
-
 from dotenv import load_dotenv
-
 from clone import clone_repo, get_all_repos, has_branch
 
 load_dotenv()
@@ -13,8 +10,8 @@ load_dotenv()
 ORG = os.getenv("ORG")
 SUBSTR = os.getenv("SUBSTR")
 BRANCH = os.getenv("BRANCH")
-DEST_DIR = os.getenv("DEST_DIR")
 TOKEN = os.getenv("GITHUB_TOKEN")
+DEST_DIR = f"clones/{ORG}-{SUBSTR}"
 
 if not shutil.which("prettier"):
     print("Prettier is NOT installed")
@@ -25,6 +22,9 @@ file_exts = ["css", "js", "html"]
 files_by_ext = {ext: [] for ext in ["html", "js", "css"]}
 
 data = []
+
+if not (os.path.isdir(DEST_DIR)):
+    os.makedirs(DEST_DIR)
 
 # Scanning repos
 with os.scandir(DEST_DIR) as entries:
@@ -44,8 +44,10 @@ for entry in data:
         for file in files:
             ext = file.split(".")[-1]
             if ext in file_exts:
-                entry["files"][ext].append(os.path.join(root, file))
-                files_by_ext[ext].append(os.path.join(root, file))
+                file_name = os.path.join(root, file)
+                if not re.search(r"normalize|reset|root", file_name):
+                    entry["files"][ext].append(file_name)
+                    files_by_ext[ext].append(file_name)
 
 # Prettify to avoid format cheating
 for ext in ["html", "css", "js"]:

@@ -4,6 +4,16 @@ from itertools import combinations
 from difflib import SequenceMatcher
 from dotenv import load_dotenv
 from clone import clone_repo, get_all_repos, has_branch
+from datetime import datetime
+
+# List of files to be ignored
+ignored_folders = ["node_modules", ".*"]
+# Files to check
+file_exts = ["css", "js", "html"]
+
+files_by_ext = {ext: [] for ext in file_exts}
+
+data = []
 
 load_dotenv()
 
@@ -13,26 +23,48 @@ BRANCH = os.getenv("BRANCH")
 TOKEN = os.getenv("GITHUB_TOKEN")
 DEST_DIR = f"clones/{ORG}-{SUBSTR}"
 
+# Check whether prettier is installed
 if not shutil.which("prettier"):
     print("Prettier is NOT installed")
     sys.exit(1)
 
-ignored_folders = ["node_modules", ".*"]
-file_exts = ["css", "js", "html"]
-files_by_ext = {ext: [] for ext in ["html", "js", "css"]}
-
-data = []
-
+# Check whether folder to clone into exists
 if not (os.path.isdir(DEST_DIR)):
     os.makedirs(DEST_DIR)
 
-# Scanning repos
 with os.scandir(DEST_DIR) as entries:
     for entry in entries:
-        with os.scandir(entry.path) as files:
-            data.append({"folder": entry, "surname": entry.name.split("-")[-1]})
+        if entry.is_dir():
+            # Get last commit timestamp for the folder
+            # try:
+            result = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    entry.path,
+                    "log",
+                    "-1",
+                    "--format=%ct",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            timestamp = int(result.stdout.strip())
+            last_commit = datetime.fromtimestamp(timestamp)
+            # except subprocess.CalledProcessError:
+            #     last_commit = None
 
-# Scanning files
+            data.append(
+                {
+                    "folder": entry,
+                    "surname": entry.name.split("-")[-1],
+                    "lastCommit": last_commit,
+                }
+            )
+
+commitDates = max(data, key=lambda x: x["lastCommit"])
+print(commitDates)
 for entry in data:
     files = os.scandir(entry["folder"].path)
     entry["files"] = {ext: [] for ext in ["html", "js", "css"]}

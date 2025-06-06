@@ -1,4 +1,5 @@
 clones/*
+reports/*
 __pycache__
 .env
 .venv

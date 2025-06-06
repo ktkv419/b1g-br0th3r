@@ -1,11 +1,6 @@
 from yattag import Doc
 import os, datetime
 
-REPORT_DIR = os.getenv("REPORT_DIR")
-
-if not (os.path.isdir(REPORT_DIR)):
-    os.makedirs(REPORT_DIR)
-
 def generate_similarity_report(similarity_data):
     doc, tag, text = Doc().tagtext()
     

@@ -1,10 +1,12 @@
 import os, re, shutil, sys, subprocess
-from pathlib import Path
 from itertools import combinations
 from difflib import SequenceMatcher
 from dotenv import load_dotenv
 from clone import clone_repo, get_all_repos, has_branch
 from datetime import datetime
+from pprint import pprint
+
+from utils.utils import check_folders, check_prettier
 
 # List of files to be ignored
 ignored_folders = ["node_modules", ".*"]
@@ -20,81 +22,11 @@ load_dotenv()
 ORG = os.getenv("ORG")
 SUBSTR = os.getenv("SUBSTR")
 BRANCH = os.getenv("BRANCH")
+REPORT_DIR = os.getenv("REPORT_DIR")
 TOKEN = os.getenv("GITHUB_TOKEN")
 DEST_DIR = f"clones/{ORG}-{SUBSTR}"
 
-# Check whether prettier is installed
-if not shutil.which("prettier"):
-    print("Prettier is NOT installed")
-    sys.exit(1)
 
-# Check whether folder to clone into exists
-if not (os.path.isdir(DEST_DIR)):
-    os.makedirs(DEST_DIR)
-
-with os.scandir(DEST_DIR) as entries:
-    for entry in entries:
-        if entry.is_dir():
-            # Get last commit timestamp for the folder
-            # try:
-            result = subprocess.run(
-                [
-                    "git",
-                    "-C",
-                    entry.path,
-                    "log",
-                    "-1",
-                    "--format=%ct",
-                ],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            timestamp = int(result.stdout.strip())
-            last_commit = datetime.fromtimestamp(timestamp)
-            # except subprocess.CalledProcessError:
-            #     last_commit = None
-
-            data.append(
-                {
-                    "folder": entry,
-                    "surname": entry.name.split("-")[-1],
-                    "lastCommit": last_commit,
-                }
-            )
-
-commitDates = max(data, key=lambda x: x["lastCommit"])
-print(commitDates)
-for entry in data:
-    files = os.scandir(entry["folder"].path)
-    entry["files"] = {ext: [] for ext in ["html", "js", "css"]}
-    for root, dirs, files in os.walk(entry["folder"]):
-        dirs[:] = [
-            d for d in dirs if not re.search(r"node_modules|^\.", d, re.IGNORECASE)
-        ]
-
-        for file in files:
-            ext = file.split(".")[-1]
-            if ext in file_exts:
-                file_name = os.path.join(root, file)
-                if not re.search(r"normalize|reset|root", file_name):
-                    entry["files"][ext].append(file_name)
-                    files_by_ext[ext].append(file_name)
-
-# Prettify to avoid format cheating
-for ext in ["html", "css", "js"]:
-    for path in files_by_ext[ext]:
-        subprocess.run(
-            ["prettier", "--write", path],
-            stdout=subprocess.DEVNULL,
-        )
-
-
-def read_file(path):
-    try:
-        return Path(path).read_text(encoding="utf-8", errors="ignore")
-    except Exception:
-        return ""
 
 
 def group_similar_files(file_list, threshold=0.5):
@@ -104,7 +36,7 @@ def group_similar_files(file_list, threshold=0.5):
 
     `ratio` is a float in [0,1], so threshold=0.5 means 50%.
     """
-    groups = []
+    groups = {}
 
     for f1, f2 in combinations(file_list, 2):
         # Read both files
@@ -118,28 +50,95 @@ def group_similar_files(file_list, threshold=0.5):
 
         # Keep only those above threshold
         if ratio >= threshold:
-            groups.append((ratio, [f1, f2]))
+            if dict.keys(groups).__contains__(f1):
+                groups[f1].append((f"{ratio * 100:.0f}%", f2))
+            else:
+                groups[f1] = [(f"{ratio * 100:.0f}%", f2)]
 
     # Sort descending by ratio
-    groups.sort(key=lambda x: x[0], reverse=True)
+    # groups.sort(key=lambda x: x[0], reverse=True)
     return groups
 
 
-# 1) Fetch & filter repo names
-all_repos = get_all_repos(ORG, TOKEN)
-targets = [r["name"] for r in all_repos if SUBSTR.lower() in r["name"].lower()]
+def main():
+    check_prettier()
 
-# 2) Clone each wip branch
-os.makedirs(DEST_DIR, exist_ok=True)
-for name in targets:
-    if has_branch(ORG, name, BRANCH, TOKEN):
-        clone_repo(ORG, name, BRANCH, DEST_DIR)
-    else:
-        print(f"skip {name}: no {BRANCH}")
+    check_folders([REPORT_DIR, DEST_DIR])
+
+    # 1) Fetch & filter repo names
+    all_repos = get_all_repos(ORG, TOKEN)
+    targets = [r["name"] for r in all_repos if SUBSTR.lower() in r["name"].lower()]
+
+    # 2) Clone each wip branch
+    for name in targets:
+        if has_branch(ORG, name, BRANCH, TOKEN):
+            clone_repo(ORG, name, BRANCH, DEST_DIR)
+        else:
+            print(f"skip {name}: no {BRANCH}")
+
+    with os.scandir(DEST_DIR) as entries:
+        for entry in entries:
+            if entry.is_dir():
+                # Get last commit timestamp for the folder
+                try:
+                    result = subprocess.run(
+                        [
+                            "git",
+                            "-C",
+                            entry.path,
+                            "log",
+                            "-1",
+                            "--format=%ct",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                    )
+                    timestamp = int(result.stdout.strip())
+                    last_commit = datetime.fromtimestamp(timestamp)
+                except subprocess.CalledProcessError:
+                    last_commit = None
+
+                data.append(
+                    {
+                        "folder": entry,
+                        "surname": entry.name.split("-")[-1],
+                        "last_commit": last_commit,
+                    }
+                )
+
+    data.sort(key=lambda x: x["last_commit"])
+
+    for entry in data:
+        files = os.scandir(entry["folder"].path)
+        entry["files"] = {ext: [] for ext in ["html", "js", "css"]}
+        for root, dirs, files in os.walk(entry["folder"]):
+            dirs[:] = [
+                d for d in dirs if not re.search(r"node_modules|^\.", d, re.IGNORECASE)
+            ]
+
+            for file in files:
+                ext = file.split(".")[-1]
+                if ext in file_exts:
+                    file_name = os.path.join(root, file)
+                    if not re.search(r"normalize|reset|root", file_name):
+                        entry["files"][ext].append(file_name)
+                        files_by_ext[ext].append(file_name)
+
+    # Prettify to avoid format cheating
+    for ext in ["html", "css", "js"]:
+        for path in files_by_ext[ext]:
+            subprocess.run(
+                ["prettier", "--write", path],
+                stdout=subprocess.DEVNULL,
+            )
+
+    similar_groups = group_similar_files(files_by_ext["css"], threshold=0.9)
+    pprint(similar_groups)
+    # for ratio, pair in similar_groups:
+    #     # ratio*100 → percentage, and .0f to round to nearest integer
+    #     print(f"{ratio * 100:.0f}% {pair}")
 
 
-similar_groups = group_similar_files(files_by_ext["css"], threshold=0.5)
-
-for ratio, pair in similar_groups:
-    # ratio*100 → percentage, and .0f to round to nearest integer
-    print(f"{ratio * 100:.0f}% {pair}")
+if __name__ == "__main__":
+    main()

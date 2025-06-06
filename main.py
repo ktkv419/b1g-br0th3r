@@ -12,6 +12,7 @@ from utils.utils import check_folders, check_prettier
 ignored_folders = ["node_modules", ".*"]
 # Files to check
 file_exts = ["css", "js", "html"]
+threshold = 0.7
 
 files_by_ext = {ext: [] for ext in file_exts}
 
@@ -27,8 +28,6 @@ TOKEN = os.getenv("GITHUB_TOKEN")
 DEST_DIR = f"clones/{ORG}-{SUBSTR}"
 
 
-
-
 def group_similar_files(file_list, threshold=0.5):
     """
     Compare each pair of files in file_list and return a list of
@@ -38,26 +37,39 @@ def group_similar_files(file_list, threshold=0.5):
     """
     groups = {}
 
-    for f1, f2 in combinations(file_list, 2):
-        # Read both files
-        with open(f1, encoding="utf-8", errors="ignore") as a, open(
-            f2, encoding="utf-8", errors="ignore"
-        ) as b:
-            txt1, txt2 = a.read(), b.read()
+    for file in file_list:
+        with open(file, encoding="utf-8", errors="ignore") as a:
+            highest_group = None
+            for group in dict.keys(groups):
+                with open(group, encoding="utf-8", errors="ignore") as b:
+                    txt1, txt2 = a.read(), b.read()
 
-        # Compute similarity ratio
-        ratio = SequenceMatcher(None, txt1, txt2).ratio()
+                ratio = SequenceMatcher(None, txt1, txt2).ratio()
 
-        # Keep only those above threshold
-        if ratio >= threshold:
-            if dict.keys(groups).__contains__(f1):
-                groups[f1].append((f"{ratio * 100:.0f}%", f2))
-            else:
-                groups[f1] = [(f"{ratio * 100:.0f}%", f2)]
+                if ratio >= threshold:
+                    groups[group].append((f"{ratio * 100:.0f}%", file))
+                else:
+                    groups[file] = []
+
+        # # Read both files
+        # with open(f1, encoding="utf-8", errors="ignore") as a, open(
+        #     f2, encoding="utf-8", errors="ignore"
+        # ) as b:
+        #     txt1, txt2 = a.read(), b.read()
+
+        # # Compute similarity ratio
+        # ratio = SequenceMatcher(None, txt1, txt2).ratio()
+
+        # # Keep only those above threshold
+        # if ratio >= threshold:
+        #     if dict.keys(groups).__contains__(f1):
+        #         groups[f1].append((f"{ratio * 100:.0f}%", f2))
+        #     else:
+        #         groups[f1] = [(f"{ratio * 100:.0f}%", f2)]
 
     # Sort descending by ratio
     # groups.sort(key=lambda x: x[0], reverse=True)
-    return groups
+    return {k: v for k, v in groups.items() if v}
 
 
 def main():
@@ -65,16 +77,16 @@ def main():
 
     check_folders([REPORT_DIR, DEST_DIR])
 
-    # 1) Fetch & filter repo names
-    all_repos = get_all_repos(ORG, TOKEN)
-    targets = [r["name"] for r in all_repos if SUBSTR.lower() in r["name"].lower()]
+    # # 1) Fetch & filter repo names
+    # all_repos = get_all_repos(ORG, TOKEN)
+    # targets = [r["name"] for r in all_repos if SUBSTR.lower() in r["name"].lower()]
 
-    # 2) Clone each wip branch
-    for name in targets:
-        if has_branch(ORG, name, BRANCH, TOKEN):
-            clone_repo(ORG, name, BRANCH, DEST_DIR)
-        else:
-            print(f"skip {name}: no {BRANCH}")
+    # # 2) Clone each wip branch
+    # for name in targets:
+    #     if has_branch(ORG, name, BRANCH, TOKEN):
+    #         clone_repo(ORG, name, BRANCH, DEST_DIR)
+    #     else:
+    #         print(f"skip {name}: no {BRANCH}")
 
     with os.scandir(DEST_DIR) as entries:
         for entry in entries:
@@ -133,11 +145,11 @@ def main():
                 stdout=subprocess.DEVNULL,
             )
 
-    similar_groups = group_similar_files(files_by_ext["css"], threshold=0.9)
+    similar_groups = {}
+    for ext in file_exts:
+        similar_groups[ext] = group_similar_files(files_by_ext[ext], threshold)
+
     pprint(similar_groups)
-    # for ratio, pair in similar_groups:
-    #     # ratio*100 → percentage, and .0f to round to nearest integer
-    #     print(f"{ratio * 100:.0f}% {pair}")
 
 
 if __name__ == "__main__":

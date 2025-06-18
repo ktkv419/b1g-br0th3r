@@ -1,4 +1,4 @@
-import os, re, shutil, sys, subprocess
+import os, re, shutil, sys
 from pathlib import Path
 from itertools import combinations
 from difflib import SequenceMatcher
@@ -18,8 +18,8 @@ if not shutil.which("prettier"):
     sys.exit(1)
 
 ignored_folders = ["node_modules", ".*"]
-file_exts = ["css", "js", "html"]
-files_by_ext = {ext: [] for ext in ["html", "js", "css"]}
+file_exts = ["py"]
+files_by_ext = {ext: [] for ext in file_exts}
 
 data = []
 
@@ -35,7 +35,7 @@ with os.scandir(DEST_DIR) as entries:
 # Scanning files
 for entry in data:
     files = os.scandir(entry["folder"].path)
-    entry["files"] = {ext: [] for ext in ["html", "js", "css"]}
+    entry["files"] = {ext: [] for ext in file_exts}
     for root, dirs, files in os.walk(entry["folder"]):
         dirs[:] = [
             d for d in dirs if not re.search(r"node_modules|^\.", d, re.IGNORECASE)
@@ -50,12 +50,12 @@ for entry in data:
                     files_by_ext[ext].append(file_name)
 
 # Prettify to avoid format cheating
-for ext in ["html", "css", "js"]:
-    for path in files_by_ext[ext]:
-        subprocess.run(
-            ["prettier", "--write", path],
-            stdout=subprocess.DEVNULL,
-        )
+# for ext in ["html", "css", "js"]:
+#     for path in files_by_ext[ext]:
+#         subprocess.run(
+#             ["prettier", "--write", path],
+#             stdout=subprocess.DEVNULL,
+#         )
 
 
 def read_file(path):
@@ -106,7 +106,7 @@ for name in targets:
         print(f"skip {name}: no {BRANCH}")
 
 
-similar_groups = group_similar_files(files_by_ext["css"], threshold=0.5)
+similar_groups = group_similar_files(files_by_ext["py"], threshold=0.5)
 
 for ratio, pair in similar_groups:
     # ratio*100 → percentage, and .0f to round to nearest integer
